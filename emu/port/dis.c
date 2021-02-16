@@ -31,7 +31,7 @@ uvlong	gcidlepass;
 uvlong	gcpartial;
 int keepbroken = 1;
 extern int	vflag;
-extern ulong kerndate;
+extern ulong	kerndate;
 static Prog*	proghash[64];
 
 static Progs*	delgrp(Prog*);
@@ -270,8 +270,8 @@ tellsomeone(Prog *p, char *buf)
 	o = p->osenv;
 	if(o->childq != nil)
 		qproduce(o->childq, buf, strlen(buf));
-	if(o->waitq != nil) 
-		qproduce(o->waitq, buf, strlen(buf)); 
+	if(o->waitq != nil)
+		qproduce(o->waitq, buf, strlen(buf));
 	poperror();
 }
 
@@ -319,6 +319,7 @@ exprog(Prog *p, char *exc)
 		cqdelp(&p->chan->recv, p);
 		break;
 	case Pready:
+	case Psuspend:
 		break;
 	case Prelease:
 		swiprog(p);
@@ -402,6 +403,7 @@ killprog(Prog *p, char *cause)
 		cqdelp(&p->chan->recv, p);
 		break;
 	case Pready:
+	case Psuspend:
 		delrunq(p);
 		break;
 	case Prelease:
@@ -445,6 +447,44 @@ killprog(Prog *p, char *cause)
 	gcunlock();
 
 	return 1;
+}
+
+int
+suspendprog(Prog *p, char *cause)
+{
+	if(waserror()) {
+		nexterror();
+		return 0;
+	}
+
+	if(p->state != Pready)
+		error(Ewrongstate);
+
+	poperror();
+	delrunq(p);
+	print("%d \"%s\":%s\n", p->pid, p->R.M->m->name, cause);
+
+	p->state = Psuspend;
+	return 1;
+}
+
+int
+resumeprog(Prog *p, char *cause)
+{
+	if(waserror()) {
+		nexterror();
+		return 0;
+	}
+
+	if(p->state != Psuspend)
+		error(Ewrongstate);
+
+	poperror();
+	print("%d \"%s\":%s\n", p->pid, p->R.M->m->name, cause);
+
+	addrun(p);
+	return 1;
+
 }
 
 void

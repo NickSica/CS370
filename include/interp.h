@@ -14,6 +14,7 @@ enum ProgState
 	Precv,				/* waiting to recv */
 	Pdebug,				/* debugged */
 	Pready,				/* ready to be scheduled */
+	Psuspend,			/* suspended from ready */
 	Prelease,			/* interpreter released */
 	Pexiting,			/* exit because of kill or error */
 	Pbroken,			/* thread crashed */
@@ -134,7 +135,7 @@ struct Progq
 	Prog*	prog;
 	Progq*	next;
 };
-	
+
 struct String
 {
 	int	len;		/* string length */
@@ -145,7 +146,7 @@ struct String
 	#define Srune	data.runes
 		char	ascii[STRUCTALIGN];	/* string.c relies on having extra space (eg, in string2c) */
 		Rune	runes[1];
-	}data;	
+	}data;
 };
 
 union Linkpc
@@ -169,7 +170,7 @@ union Adr
 	WORD	ind;
 	Inst*	ins;
 	struct {
-		ushort	f;	/* First indirection */	
+		ushort	f;	/* First indirection */
 		ushort	s;	/* Second indirection */
 	} i;
 };
@@ -449,6 +450,8 @@ extern	void		keyringmodinit(void);
 extern	void		killcomm(Progq **p);
 extern	int		killprog(Prog*, char*);
 extern	int		killgrp(Prog*, char*);
+extern	int		suspendprog(Prog*, char *);
+extern	int		resumeprog(Prog*, char *);
 extern	Modlink*	linkmod(Module*, Import*, int);
 extern	Modlink*	mklinkmod(Module*, int);
 extern	Module*		load(char*);

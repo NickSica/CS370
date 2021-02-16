@@ -64,3 +64,4 @@ char Ebadstat[] = "malformed stat buffer";
 char Ecmdargs[] = "wrong #args in control message";
 char Enofd[] = "no free file descriptors";
 char Enoctl[] = "unknown control request";
+char Ewrongstate[] = "process is in a wrong state";

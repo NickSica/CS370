@@ -53,7 +53,9 @@ enum
 	CMkillgrp,
 	CMrestricted,
 	CMexceptions,
-	CMprivate
+	CMprivate,
+	CMsuspend,
+	CMresume
 };
 
 static
@@ -63,6 +65,8 @@ Cmdtab progcmd[] = {
 	CMrestricted, "restricted", 1,
 	CMexceptions, "exceptions", 2,
 	CMprivate, "private",	1,
+	CMsuspend, "suspend", 1,
+	CMresume, "resume", 1
 };
 
 enum
@@ -134,6 +138,7 @@ static char *progstate[] =			/* must correspond to include/interp.h */
 	"recv",				/* waiting to recv */
 	"debug",			/* debugged */
 	"ready",			/* ready to be scheduled */
+	"suspend",			/* suspended from ready */
 	"release",			/* interpreter released */
 	"exiting",			/* exit because of kill or error */
 	"broken",			/* thread crashed */
@@ -748,7 +753,7 @@ progheap(Heapqry *hq, char *va, int count, ulong offset)
 					n += snprint(va+n, count-n, "%d.%lux.%d.%d\n", c->buf->len, (ulong)c->buf->data, c->front, c->size);
 			}
 			break;
-			
+
 		}
 		addr += s;
 		if(signed_off > 0) {
@@ -1072,6 +1077,12 @@ progwrite(Chan *c, void *va, long n, vlong offset)
 			break;
 		case CMprivate:
 			p->group->flags |= Pprivatemem;
+			break;
+		case CMsuspend:
+			suspendprog(p, "suspended");
+			break;
+		case CMresume:
+			resumeprog(p, "resumed");
 			break;
 		}
 		poperror();

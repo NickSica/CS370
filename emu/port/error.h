@@ -61,5 +61,6 @@ extern char Ebadstat[];	/* malformed stat buffer */
 extern char Ecmdargs[];		/* wrong #args in control message */
 extern char	Enofd[];	/* no free file descriptors */
 extern char Enoctl[];	/* unknown control request */
+extern char Ewrongstate[];	/* process is in a wrong state */
 
 extern void	error(char*);
