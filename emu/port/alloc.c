@@ -8,11 +8,8 @@ enum
 	MAXPOOL		= 4
 };
 
-#define left	u.s.bhl
-#define right	u.s.bhr
-#define fwd	u.s.bhf
-#define prev	u.s.bhv
-#define parent	u.s.bhp
+#define next u.s.next
+#define prev u.s.prev
 
 #define RESERVED	512*1024
 
@@ -29,7 +26,7 @@ struct Pool
 	ulong	arenasize;
 	ulong	hw;
 	Lock	l;
-	Bhdr*	root;
+	Bhdr*	head;
 	Bhdr*	chain;
 	ulong	nalloc;
 	ulong	nfree;
@@ -154,83 +151,36 @@ poolchain(Pool *p)
 }
 
 void
+printpool(Pool *p)
+{
+	Bhdr *t = p->head;
+	int idx = 0;
+	while(t != nil) {
+		print("block %d- size: %lud\n", idx, t->size);
+		t = t->next;
+		idx++;
+	}
+}
+
+void
 pooldel(Pool *p, Bhdr *t)
 {
-	Bhdr *s, *f, *rp, *q;
+	if(p->head == t) {
+		if(t->next == nil) {
+			p->head = nil;
+			return;
+		}
 
-	if(t->parent == nil && p->root != t) {
-		t->prev->fwd = t->fwd;
-		t->fwd->prev = t->prev;
+		p->head = t->next;
+		p->head->prev = nil;
 		return;
 	}
 
-	if(t->fwd != t) {
-		f = t->fwd;
-		s = t->parent;
-		f->parent = s;
-		if(s == nil)
-			p->root = f;
-		else {
-			if(s->left == t)
-				s->left = f;
-			else
-				s->right = f;
-		}
-
-		rp = t->left;
-		f->left = rp;
-		if(rp != nil)
-			rp->parent = f;
-		rp = t->right;
-		f->right = rp;
-		if(rp != nil)
-			rp->parent = f;
-
-		t->prev->fwd = t->fwd;
-		t->fwd->prev = t->prev;
+	t->prev->next = t->next;
+	if(t->next == nil)
 		return;
-	}
 
-	if(t->left == nil)
-		rp = t->right;
-	else {
-		if(t->right == nil)
-			rp = t->left;
-		else {
-			f = t;
-			rp = t->right;
-			s = rp->left;
-			while(s != nil) {
-				f = rp;
-				rp = s;
-				s = rp->left;
-			}
-			if(f != t) {
-				s = rp->right;
-				f->left = s;
-				if(s != nil)
-					s->parent = f;
-				s = t->right;
-				rp->right = s;
-				if(s != nil)
-					s->parent = rp;
-			}
-			s = t->left;
-			rp->left = s;
-			s->parent = rp;
-		}
-	}
-	q = t->parent;
-	if(q == nil)
-		p->root = rp;
-	else {
-		if(t == q->left)
-			q->left = rp;
-		else
-			q->right = rp;
-	}
-	if(rp != nil)
-		rp->parent = q;
+	t->next->prev = t->prev;
 }
 
 void
@@ -241,41 +191,37 @@ pooladd(Pool *p, Bhdr *q)
 
 	q->magic = MAGIC_F;
 
-	q->left = nil;
-	q->right = nil;
-	q->parent = nil;
-	q->fwd = q;
-	q->prev = q;
+	q->next = nil;
+	q->prev = nil;
 
-	t = p->root;
+	t = p->head;
 	if(t == nil) {
-		p->root = q;
+		p->head = q;
 		return;
 	}
 
 	size = q->size;
-
 	tp = nil;
 	while(t != nil) {
-		if(size == t->size) {
+		if(size <= t->size) {
 			q->prev = t->prev;
-			q->prev->fwd = q;
-			q->fwd = t;
+			q->next = t;
 			t->prev = q;
+
+			if(t == p->head)
+				p->head = q;
+			else
+				q->prev->next = q;
+
 			return;
 		}
 		tp = t;
-		if(size < t->size)
-			t = t->left;
-		else
-			t = t->right;
+		t = t->next;
 	}
 
-	q->parent = tp;
-	if(size < tp->size)
-		tp->left = q;
-	else
-		tp->right = q;
+	tp->next = q;
+	q->next = nil;
+	q->prev = tp;
 }
 
 static void*
@@ -294,29 +240,28 @@ dopoolalloc(Pool *p, ulong asize, ulong pc)
 	lock(&p->l);
 	p->nalloc++;
 
-	t = p->root;
+	t = p->head;
 	q = nil;
 	while(t) {
-		if(t->size == size) {
-			t = t->fwd;
-			pooldel(p, t);
-			t->magic = MAGIC_A;
-			p->cursize += t->size;
+		if(size <= t->size) {
+			q = t;
+			break;
+		}
+		t = t->next;
+	}
+	if(q != nil) {
+		if(size == q->size) {
+			pooldel(p, q);
+			q->magic = MAGIC_A;
+			p->cursize += q->size;
 			if(p->cursize > p->hw)
 				p->hw = p->cursize;
 			unlock(&p->l);
 			if(p->monitor)
-				MM(p->pnum, pc, (ulong)B2D(t), size);
-			return B2D(t);
+				MM(p->pnum, pc, (ulong)B2D(q), size);
+			return B2D(q);
 		}
-		if(size < t->size) {
-			q = t;
-			t = t->left;
-		}
-		else
-			t = t->right;
-	}
-	if(q != nil) {
+
 		pooldel(p, q);
 		q->magic = MAGIC_A;
 		frag = q->size - size;
@@ -410,7 +355,7 @@ dopoolalloc(Pool *p, ulong asize, ulong pc)
 		poolfree(p, B2D(q));		/* for backward merge */
 		return poolalloc(p, osize);
 	}
-	
+
 	t->magic = MAGIC_E;		/* Make a leader */
 	t->size = ldr;
 	t->csize = ns+ldr;
@@ -538,17 +483,15 @@ static ulong
 poolmax(Pool *p)
 {
 	Bhdr *t;
-	ulong size;
+	t = p->head;
 
-	lock(&p->l);
-	size = p->maxsize - p->cursize;
-	t = p->root;
-	if(t != nil) {
-		while(t->right != nil)
-			t = t->right;
-		if(size < t->size)
-			size = t->size;
-	}
+	if(t == nil)
+		return 0;
+
+	while(t->next != nil)
+		t = t->next;
+	ulong size = t->size;
+
 	if(size >= BHDRSIZE)
 		size -= BHDRSIZE;
 	unlock(&p->l);
@@ -657,7 +600,7 @@ malloc(size_t size)
 		}
 		memset(v, 0, size);
 		MM(0, getcallerpc(&size), (ulong)v, size);
-	} else 
+	} else
 		print("malloc failed from %lux\n", getcallerpc(&size));
 	return v;
 }
@@ -678,7 +621,7 @@ mallocz(ulong size, int clr)
 		if(clr)
 			memset(v, 0, size);
 		MM(0, getcallerpc(&size), (ulong)v, size);
-	} else 
+	} else
 		print("mallocz failed from %lux\n", getcallerpc(&size));
 	return v;
 }
@@ -717,7 +660,7 @@ realloc(void *v, size_t size)
 		setrealloctag(nv, getcallerpc(&v));
 		if(v == nil)
 			setmalloctag(v, getcallerpc(&v));
-	} else 
+	} else
 		print("realloc failed from %lux\n", getcallerpc(&v));
 	return nv;
 }
@@ -824,7 +767,7 @@ poolsetcompact(Pool *p, void (*move)(void*, void*))
 int
 poolcompact(Pool *pool)
 {
-	Bhdr *base, *limit, *ptr, *end, *next;
+	Bhdr *base, *limit, *ptr, *end, *next_block;
 	int compacted, nb;
 
 	if(pool->move == nil || pool->lastfree == pool->nfree)
@@ -837,10 +780,10 @@ poolcompact(Pool *pool)
 	limit = B2LIMIT(base);
 	compacted = 0;
 
-	pool->root = nil;
+	pool->head = nil;
 	end = ptr;
 	while(base != nil) {
-		next = B2NB(ptr);
+		next_block = B2NB(ptr);
 		if(ptr->magic == MAGIC_A || ptr->magic == MAGIC_I) {
 			if(ptr != end) {
 				memmove(end, ptr, ptr->size);
@@ -849,7 +792,7 @@ poolcompact(Pool *pool)
 			}
 			end = B2NB(end);
 		}
-		if(next >= limit) {
+		if(next_block >= limit) {
 			nb = (uchar*)limit - (uchar*)end;
 			if(nb > 0){
 				if(nb < pool->quanta+1){
@@ -867,7 +810,7 @@ poolcompact(Pool *pool)
 			end = ptr;	/* could do better by copying between chains */
 			limit = B2LIMIT(base);
 		} else
-			ptr = next;
+			ptr = next_block;
 	}
 
 	return compacted;

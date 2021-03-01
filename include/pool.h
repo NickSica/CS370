@@ -21,11 +21,8 @@ struct Bhdr
 	union {
 		uchar data[1];
 		struct {
-			Bhdr*	bhl;
-			Bhdr*	bhr;
-			Bhdr*	bhp;
-			Bhdr*	bhv;
-			Bhdr*	bhf;
+			Bhdr* prev;
+			Bhdr* next;
 		} s;
 #define clink	u.l.link
 #define csize	u.l.size
