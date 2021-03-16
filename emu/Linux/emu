@@ -24,6 +24,8 @@ dev
 #	audio	audio-oss
 	mem
 
+	shout
+
 lib
 	interp
 	tk

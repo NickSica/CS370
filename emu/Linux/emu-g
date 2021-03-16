@@ -21,6 +21,8 @@ dev
 #	audio	audio
 	mem
 
+	shout
+
 lib
 	interp
 	math
